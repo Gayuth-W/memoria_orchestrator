@@ -40,22 +40,23 @@ class MemoriaClient:
         )    
 
     # --- internals -----------------------------------------------------------
-    def _headers(self, auth: bool = True) -> dict:
+    def _headers(self, auth: bool = True, api_key: str | None = None) -> dict:
         if not auth:
             return {}
-        if not self.api_key:
+        key = api_key or self.api_key
+        if not key:
             raise RuntimeError(
-                "MEMORIA_API_KEY is not set. Put it in .env or pass api_key=."
+                "MEMORIA_API_KEY is not set. Put it in .env, pass in headers, or pass api_key=."
             )
-        return {"X-API-Key": self.api_key}
+        return {"X-API-Key": key}
  
     # --- core runtime calls --------------------------------------------------
-    def search(self, session_id: str, query: str, top_k: int | None = None) -> list[dict]:
+    def search(self, session_id: str, query: str, top_k: int | None = None, api_key: str | None = None) -> list[dict]:
         """Retrieve ranked memories. memoria searches across ALL the user's
         memories (cross-session) with a boost for `session_id`."""
         resp = self._client.post(
             "/search",
-            headers=self._headers(),
+            headers=self._headers(api_key=api_key),
             json={"session_id": session_id, "query": query},
         )
         resp.raise_for_status()
@@ -64,12 +65,12 @@ class MemoriaClient:
         k = top_k if top_k is not None else config.SEARCH_TOP_K
         return memories[:k]  # already ranked by memoria; just cap        
 
-    def create_memory(self, session_id: str, text: str) -> None:
+    def create_memory(self, session_id: str, text: str, api_key: str | None = None) -> None:
           """Store one memory. Embedding is indexed asynchronously by memoria's
           worker, so it may take a moment before it is vector-searchable."""
           resp = self._client.post(
               "/memories",
-              headers=self._headers(),
+              headers=self._headers(api_key=api_key),
               json={"session_id": session_id, "text": text},
           )
           resp.raise_for_status()  # expects 201        
@@ -83,19 +84,19 @@ class MemoriaClient:
         # memoria returns 500 on duplicate (unique constraint). Treat as exists.
         return False          
 
-    def list_sessions(self) -> list[dict]:
-        resp = self._client.get("/sessions", headers=self._headers())
+    def list_sessions(self, api_key: str | None = None) -> list[dict]:
+        resp = self._client.get("/sessions", headers=self._headers(api_key=api_key))
         resp.raise_for_status()
         return resp.json() or []
  
-    def create_session(self, title: str) -> str:
+    def create_session(self, title: str, api_key: str | None = None) -> str:
         """Create a session and return its id (resolved via list, since
         POST /sessions returns no body)."""
         resp = self._client.post(
-            "/sessions", headers=self._headers(), json={"title": title}
+            "/sessions", headers=self._headers(api_key=api_key), json={"title": title}
         )
         resp.raise_for_status()  # 201
-        matching = [s for s in self.list_sessions() if s.get("title") == title]
+        matching = [s for s in self.list_sessions(api_key=api_key) if s.get("title") == title]
         if not matching:
             raise RuntimeError(f"created session '{title}' but couldn't find it")
         matching.sort(key=lambda s: s.get("created_at", ""), reverse=True)
