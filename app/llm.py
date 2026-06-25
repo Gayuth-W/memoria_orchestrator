@@ -165,3 +165,11 @@ def extract_facts(message: str, reply: str = "") -> list[str]:
         block.text for block in resp.content if getattr(block, "type", None) == "text"
     )
     return _parse_fact_list(text)    
+
+CLASSIFY_PROFILE_SYSTEM = """You decide which facts about a user's project are PROFILE-level.
+ 
+Profile-level facts are durable, foundational decisions that should ALWAYS be available as context in every future conversation about this project — for example: the programming language, backend or frontend framework, database, or core architecture choice.
+ 
+Non-profile facts are narrower, transient, or task-specific.
+ 
+You will receive a JSON array of fact strings. Output ONLY a JSON array containing the subset that are profile-level, copied VERBATIM from the input. No prose, no markdown. If none qualify, output []."""    
