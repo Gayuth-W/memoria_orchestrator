@@ -173,3 +173,28 @@ Profile-level facts are durable, foundational decisions that should ALWAYS be av
 Non-profile facts are narrower, transient, or task-specific.
  
 You will receive a JSON array of fact strings. Output ONLY a JSON array containing the subset that are profile-level, copied VERBATIM from the input. No prose, no markdown. If none qualify, output []."""    
+
+def classify_profile(facts: list[str]) -> list[str]:
+    """Return the subset of `facts` that are foundational/profile-level.
+ 
+    Only called when there are facts to classify (most turns: none), so it adds
+    no cost to ordinary turns. Output is intersected with the input so the model
+    cannot invent facts.
+    """
+    if not facts:
+        return []
+    import json
+ 
+    resp = get_client().messages.create(
+        model=config.EXTRACTION_MODEL,
+        max_tokens=512,
+        temperature=0,
+        system=CLASSIFY_PROFILE_SYSTEM,
+        messages=[{"role": "user", "content": json.dumps(facts)}],
+    )
+    text = "".join(
+        block.text for block in resp.content if getattr(block, "type", None) == "text"
+    )
+    picked = _parse_fact_list(text)
+    allowed = set(facts)
+    return [f for f in picked if f in allowed]
