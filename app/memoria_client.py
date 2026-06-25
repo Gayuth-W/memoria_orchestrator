@@ -74,4 +74,11 @@ class MemoriaClient:
           )
           resp.raise_for_status()  # expects 201        
 
-          
+    def create_user(self, api_key: str) -> bool:
+        """Register a user with a self-chosen api_key (public endpoint).
+        Returns True if created, False if it already existed."""
+        resp = self._client.post("/users", json={"api_key": api_key})
+        if resp.status_code == 201:
+            return True
+        # memoria returns 500 on duplicate (unique constraint). Treat as exists.
+        return False          
