@@ -33,9 +33,7 @@ def has_go(text: str) -> bool:
 
 
 def main() -> int:
-    if not config.ANTHROPIC_API_KEY:
-        print("SKIP: ANTHROPIC_API_KEY not set.")
-        return 2
+
     if not config.MEMORIA_API_KEY:
         print("SKIP: MEMORIA_API_KEY not set.")
         return 2

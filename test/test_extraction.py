@@ -35,9 +35,7 @@ CASES = [
 
 
 def main() -> int:
-    if not config.ANTHROPIC_API_KEY:
-        print("SKIP: ANTHROPIC_API_KEY not set.")
-        return 2
+
 
     print(f"Extraction model: {config.EXTRACTION_MODEL}\n")
     all_pass = True

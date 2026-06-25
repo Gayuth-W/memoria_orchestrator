@@ -106,7 +106,7 @@ def generate(memory_context: str, history: list[dict], user_message: str) -> str
 # this prompt, and watch for over-extraction on questions/requests.
 EXTRACTION_SYSTEM = """You extract durable facts about a user from one conversation turn, for a long-term memory system.
 
-Output ONLY a JSON array of strings. No prose, no explanation, no markdown, no code fences.
+Output ONLY a JSON object with a single key "facts" containing an array of strings. No prose, no explanation, no markdown, no code fences.
 
 Include a fact ONLY if the USER has actually stated or committed to a durable decision, preference, or fact about themselves or their project. Each fact must be:
 - atomic: exactly one fact per string
@@ -119,7 +119,11 @@ Do NOT include:
 - the assistant's suggestions, opinions, or advice
 - small talk or transient details
 
-If there are no durable user facts in this turn, output exactly: []"""
+Example of what TO extract:
+If the user says "I'm migrating my web app to Postgres and Redis", you should output:
+{"facts": ["User is using Postgres for their database", "User is using Redis"]}
+
+If there are no durable user facts in this turn, output exactly: {"facts": []}"""
 
 
 def _parse_fact_list(text: str) -> list[str]:
@@ -192,7 +196,7 @@ Profile-level facts are durable, foundational decisions that should ALWAYS be av
 
 Non-profile facts are narrower, transient, or task-specific.
 
-You will receive a JSON array of fact strings. Output ONLY a JSON array containing the subset that are profile-level, copied VERBATIM from the input. No prose, no markdown. If none qualify, output []."""
+You will receive a JSON array of fact strings. Output ONLY a JSON object with a single key "facts" containing an array of the subset that are profile-level, copied VERBATIM from the input. No prose, no markdown. If none qualify, output {"facts": []}."""
 
 
 def classify_profile(facts: list[str]) -> list[str]:
