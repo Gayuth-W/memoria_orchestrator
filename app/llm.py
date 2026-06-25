@@ -83,7 +83,9 @@ def generate(memory_context: str, history: list[dict], user_message: str) -> str
  
     return "".join(
         block.text for block in resp.content if getattr(block, "type", None) == "text"
-    )# The riskiest prompt in the system. Two failure modes it must avoid:
+    )
+    
+# The riskiest prompt in the system. Two failure modes it must avoid:
 #   - over-extraction: storing questions/requests/hypotheticals pollutes memory
 #   - under-extraction: missing a real decision loses it forever
 # The bias here is deliberately CONSERVATIVE: when unsure, extract nothing.
@@ -104,3 +106,38 @@ Do NOT include:
  
 If there are no durable user facts in this turn, output exactly: []"""
 
+
+def _parse_fact_list(text: str) -> list[str]:
+    """Defensively pull a JSON array of strings out of the model's text.
+ 
+    Tolerates code fences and stray prose. On any failure, returns [] — failing
+    safe (store nothing) rather than storing garbage.
+    """
+    import json
+    import re
+ 
+    if not text:
+        return []
+    t = text.strip()
+    if t.startswith("```"):
+        t = re.sub(r"^```[a-zA-Z]*\n?", "", t)
+        t = re.sub(r"\n?```$", "", t).strip()
+ 
+    data = None
+    try:
+        data = json.loads(t)
+    except Exception:
+        i, j = t.find("["), t.rfind("]")
+        if i != -1 and j > i:
+            try:
+                data = json.loads(t[i : j + 1])
+            except Exception:
+                return []
+        else:
+            return []
+ 
+    if isinstance(data, dict):  # tolerate {"facts": [...]}
+        data = data.get("facts", [])
+    if not isinstance(data, list):
+        return []
+    return [s.strip() for s in data if isinstance(s, str) and s.strip()]
