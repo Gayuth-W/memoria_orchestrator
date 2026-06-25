@@ -10,3 +10,14 @@ recall it.
 --- KNOWN FACTS (from memory) ---
 {context}
 --- END KNOWN FACTS ---"""
+
+def build_system_prompt(memory_context: str) -> str:
+    """Wrap the retrieved memory block into the system prompt.
+ 
+    ``memory_context`` is the *systemContext* from the phase plan: a plain-text
+    block of remembered facts (one per line is fine). Empty is allowed.
+    """
+    context = memory_context.strip() if memory_context else ""
+    if not context:
+        context = "(no facts remembered yet)"
+    return SYSTEM_TEMPLATE.format(context=context)
