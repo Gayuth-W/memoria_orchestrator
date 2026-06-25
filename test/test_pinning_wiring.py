@@ -39,11 +39,7 @@ def main() -> int:
     checks.append(("retrieved-only fact still present", "User likes tabs." in ctx))
 
     # --- classify_profile: parse + reject invented -------------------------
-    fake_client = MagicMock()
-    fake_client.messages.create.return_value = fake_msg(
-        '["User chose Go for the backend.", "User invented by model."]'
-    )
-    with patch.object(llm, "get_client", return_value=fake_client):
+    with patch.object(llm, "_ollama_chat", return_value='["User chose Go for the backend.", "User invented by model."]'):
         picked = llm.classify_profile([
             "User chose Go for the backend.",
             "User asked about deployment.",
@@ -53,7 +49,7 @@ def main() -> int:
     checks.append(("classify rejects facts not in input",
                    "User invented by model." not in picked))
     # empty input -> no call, empty out
-    with patch.object(llm, "get_client") as gc:
+    with patch.object(llm, "_ollama_chat") as gc:
         out = llm.classify_profile([])
     checks.append(("classify_profile([]) makes no call", out == [] and gc.call_count == 0))
 
