@@ -22,3 +22,18 @@ def _normalize_memory(r: dict) -> dict:
         "score": _get(r, "FinalScore", "final_score", "score"),
         "created_at": _get(r, "CreatedAt", "created_at"),
     }
+
+class MemoriaClient:
+    def __init__(
+        self,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        timeout: float = 15.0,
+        transport: httpx.BaseTransport | None = None,  # for tests
+    ):
+        self.base_url = (base_url or config.MEMORIA_BASE_URL).rstrip("/")
+        self.api_key = api_key if api_key is not None else config.MEMORIA_API_KEY
+        self._client = httpx.Client(
+            base_url=self.base_url,
+            timeout=timeout,
+            transport=transport,    
