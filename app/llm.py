@@ -1,12 +1,24 @@
+"""The AI layer — Phase 1.
+ 
+A single responsibility: given some injected context (memories), the prior
+conversation, and the user's current message, produce Claude's reply.
+ 
+This is intentionally the *only* place that talks to the Anthropic API, so the
+orchestrator (Phase 2) never touches the SDK directly — it just calls
+``generate(...)`` with whatever memories it retrieved.
+ 
+Verified against anthropic SDK 0.112.0:
+  client.messages.create(model=, max_tokens=, system=, messages=, temperature=)
+  -> Message; Message.content is a list of blocks; text blocks have .text / .type
+"""
+
+
+
 from functools import lru_cache
  
 import anthropic
  
 from . import config
-
-
-
-
 
 SYSTEM_TEMPLATE = """You are an assistant helping a developer build a software project.
  
