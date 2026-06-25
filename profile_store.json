@@ -1,0 +1,11 @@
+{
+  "e2e-test": [
+    "User chose Go for the backend",
+    "User chose React for the frontend"
+  ],
+  "default": [
+    "User chose Go for the backend",
+    "User is using Go for the backend",
+    "User chose Node for the backend"
+  ]
+}
