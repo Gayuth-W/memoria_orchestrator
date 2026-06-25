@@ -32,7 +32,7 @@ app = FastAPI(title="memoria orchestrator", version="0.4.0")
 _memoria = MemoriaClient()
 _orch = Orchestrator(_memoria)
 
-_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+_STATIC_DIR = os.path.dirname(os.path.dirname(__file__))
 
 
 # --- models ------------------------------------------------------------------
