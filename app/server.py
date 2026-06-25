@@ -20,14 +20,23 @@ from __future__ import annotations
 import os
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from .memoria_client import MemoriaClient
 from .orchestrator import Orchestrator
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="memoria orchestrator", version="0.4.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _memoria = MemoriaClient()
 _orch = Orchestrator(_memoria)
@@ -87,16 +96,16 @@ def health():
 
 # --- core --------------------------------------------------------------------
 @app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, x_api_key: str | None = Header(None, alias="X-API-Key")):
     history = [m.model_dump() for m in req.history]
-    result = _orch.chat(req.session_id, req.message, history, profile_id=req.profile_id)
+    result = _orch.chat(req.session_id, req.message, history, profile_id=req.profile_id, api_key=x_api_key)
     return ChatResponse(**result)
 
 
 @app.post("/seed")
-def seed(req: SeedRequest):
+def seed(req: SeedRequest, x_api_key: str | None = Header(None, alias="X-API-Key")):
     for fact in req.facts:
-        _memoria.create_memory(req.session_id, fact)
+        _memoria.create_memory(req.session_id, fact, api_key=x_api_key)
     return {"stored": len(req.facts)}
 
 
@@ -120,11 +129,11 @@ def unpin(req: PinRequest):
 
 # --- session proxies (demo convenience) -------------------------------------
 @app.get("/sessions")
-def list_sessions():
-    return {"sessions": _memoria.list_sessions()}
+def list_sessions(x_api_key: str | None = Header(None, alias="X-API-Key")):
+    return {"sessions": _memoria.list_sessions(api_key=x_api_key)}
 
 
 @app.post("/sessions")
-def create_session(req: SessionRequest):
-    sid = _memoria.create_session(req.title)
+def create_session(req: SessionRequest, x_api_key: str | None = Header(None, alias="X-API-Key")):
+    sid = _memoria.create_session(req.title, api_key=x_api_key)
     return {"id": sid, "title": req.title}
