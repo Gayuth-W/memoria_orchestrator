@@ -1,26 +1,23 @@
-"""The AI layer — Phase 1.
+"""The LLM layer — local Ollama (no API key, no cost).
 
-A single responsibility: given some injected context (memories), the prior
-conversation, and the user's current message, produce Claude's reply.
+A single seam, ``_ollama_chat``, talks to Ollama's /api/chat. Everything else
+(generate / extract_facts / classify_profile) builds messages and calls it, so
+the orchestrator never touches HTTP and tests mock one function.
 
-This is intentionally the *only* place that talks to the Anthropic API, so the
-orchestrator (Phase 2) never touches the SDK directly — it just calls
-``generate(...)`` with whatever memories it retrieved.
-
-Verified against anthropic SDK 0.112.0:
-  client.messages.create(model=, max_tokens=, system=, messages=, temperature=)
-  -> Message; Message.content is a list of blocks; text blocks have .text / .type
+Ollama /api/chat (stream=False) returns: {"message": {"role","content"}, ...}.
+For the structured tasks we set format="json" so Ollama constrains output to
+valid JSON — important for small local models. The defensive parser still
+handles arrays, {"facts": [...]} wrappers, and stray prose.
 """
 
-from functools import lru_cache
+from __future__ import annotations
 
-import anthropic
+import httpx
 
 from . import config
 
-# How injected memories are framed for the model. Keeping this explicit (and
-# telling the model NOT to invent memories) is what makes retrieved context
-# actually steer the answer instead of being treated as flavour text.
+# Framing for injected memories. Telling the model NOT to invent memories is
+# what makes retrieved context steer the answer instead of being decoration.
 SYSTEM_TEMPLATE = """You are an assistant helping a developer build a software project.
 
 Between the markers below are facts about this user and their project that were
@@ -36,66 +33,77 @@ recall it.
 
 
 def build_system_prompt(memory_context: str) -> str:
-    """Wrap the retrieved memory block into the system prompt.
-
-    ``memory_context`` is the *systemContext* from the phase plan: a plain-text
-    block of remembered facts (one per line is fine). Empty is allowed.
-    """
+    """Wrap the retrieved memory block into the system prompt. Empty is allowed."""
     context = memory_context.strip() if memory_context else ""
     if not context:
         context = "(no facts remembered yet)"
     return SYSTEM_TEMPLATE.format(context=context)
 
 
-@lru_cache(maxsize=1)
-def get_client() -> anthropic.Anthropic:
-    """Construct (once) the Anthropic client.
+def _ollama_chat(
+    messages: list[dict],
+    *,
+    model: str,
+    temperature: float = 0.7,
+    num_predict: int | None = None,
+    fmt: str | None = None,
+) -> str:
+    """Call Ollama /api/chat and return the assistant text.
 
-    Raises a clear error if the API key is missing. This is the only spot that
-    requires the key, so importing the package for tests stays key-free.
+    The single network seam. Tests patch this function.
     """
-    if not config.ANTHROPIC_API_KEY:
-        raise RuntimeError(
-            "ANTHROPIC_API_KEY is not set. Put it in a local .env file "
-            "(see .env.example) or export it before running."
-        )
-    return anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    options: dict = {"temperature": temperature}
+    if num_predict is not None:
+        options["num_predict"] = num_predict
+    payload: dict = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "options": options,
+    }
+    if fmt is not None:
+        payload["format"] = fmt
+
+    resp = httpx.post(
+        f"{config.OLLAMA_BASE_URL}/api/chat",
+        json=payload,
+        timeout=config.OLLAMA_TIMEOUT,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return (data.get("message") or {}).get("content", "") or ""
 
 
 def generate(memory_context: str, history: list[dict], user_message: str) -> str:
-    """Produce Claude's reply.
+    """Produce the assistant's reply.
 
     Args:
         memory_context: remembered facts to inject (the systemContext block).
-        history: prior turns as ``[{"role": "user"|"assistant", "content": str}]``.
-                 Pass ``[]`` for a fresh conversation (Phase 1).
+        history: prior turns as [{"role": "user"|"assistant", "content": str}].
         user_message: the user's current message.
-
-    Returns:
-        The assistant's reply text (text blocks concatenated).
     """
     system_prompt = build_system_prompt(memory_context)
-    messages = list(history) + [{"role": "user", "content": user_message}]
-
-    resp = get_client().messages.create(
-        model=config.CLAUDE_MODEL,
-        max_tokens=config.MAX_TOKENS,
+    messages = (
+        [{"role": "system", "content": system_prompt}]
+        + list(history)
+        + [{"role": "user", "content": user_message}]
+    )
+    return _ollama_chat(
+        messages,
+        model=config.OLLAMA_MODEL,
         temperature=config.TEMPERATURE,
-        system=system_prompt,
-        messages=messages,
-    )
-
-    return "".join(
-        block.text for block in resp.content if getattr(block, "type", None) == "text"
+        num_predict=config.MAX_TOKENS,
     )
 
 
-# --- Phase 3: fact extraction (the write path) ------------------------------
+# --- fact extraction (the write path) ---------------------------------------
 
-# The riskiest prompt in the system. Two failure modes it must avoid:
+# The riskiest prompt in the system. Two failure modes to avoid:
 #   - over-extraction: storing questions/requests/hypotheticals pollutes memory
 #   - under-extraction: missing a real decision loses it forever
-# The bias here is deliberately CONSERVATIVE: when unsure, extract nothing.
+# Bias is deliberately CONSERVATIVE: when unsure, extract nothing.
+# NOTE: small local models gate worse than a frontier model — expect to tune
+# this prompt, and watch for over-extraction on questions/requests.
 EXTRACTION_SYSTEM = """You extract durable facts about a user from one conversation turn, for a long-term memory system.
 
 Output ONLY a JSON array of strings. No prose, no explanation, no markdown, no code fences.
@@ -117,8 +125,8 @@ If there are no durable user facts in this turn, output exactly: []"""
 def _parse_fact_list(text: str) -> list[str]:
     """Defensively pull a JSON array of strings out of the model's text.
 
-    Tolerates code fences and stray prose. On any failure, returns [] — failing
-    safe (store nothing) rather than storing garbage.
+    Tolerates code fences, {"facts": [...]} wrappers, and stray prose. On any
+    failure returns [] — failing safe (store nothing) rather than storing junk.
     """
     import json
     import re
@@ -143,39 +151,40 @@ def _parse_fact_list(text: str) -> list[str]:
         else:
             return []
 
-    if isinstance(data, dict):  # tolerate {"facts": [...]}
-        data = data.get("facts", [])
+    if isinstance(data, dict):  # tolerate {"facts": [...]} (common with format=json)
+        # take the first list value if present, else a "facts" key
+        if "facts" in data and isinstance(data["facts"], list):
+            data = data["facts"]
+        else:
+            lists = [v for v in data.values() if isinstance(v, list)]
+            data = lists[0] if lists else []
     if not isinstance(data, list):
         return []
     return [s.strip() for s in data if isinstance(s, str) and s.strip()]
 
 
 def extract_facts(message: str, reply: str = "") -> list[str]:
-    """Extract durable user facts from a turn. Returns [] when there are none.
-
-    temperature=0 because extraction should be deterministic, not creative.
-    The assistant reply is passed for context only (e.g. to resolve "yes, do
-    that"); the prompt forbids extracting facts from the assistant's words.
-    """
+    """Extract durable user facts from a turn. Returns [] when there are none."""
     user_content = (
         f"User message:\n{message}\n\n"
         f"Assistant reply (context only — do NOT extract facts from the "
         f"assistant's suggestions):\n{reply}"
     )
-    resp = get_client().messages.create(
+    messages = [
+        {"role": "system", "content": EXTRACTION_SYSTEM},
+        {"role": "user", "content": user_content},
+    ]
+    text = _ollama_chat(
+        messages,
         model=config.EXTRACTION_MODEL,
-        max_tokens=512,
         temperature=0,
-        system=EXTRACTION_SYSTEM,
-        messages=[{"role": "user", "content": user_content}],
-    )
-    text = "".join(
-        block.text for block in resp.content if getattr(block, "type", None) == "text"
+        num_predict=512,
+        fmt="json",
     )
     return _parse_fact_list(text)
 
 
-# --- Phase 4: profile classification (which facts to pin) -------------------
+# --- profile classification (which facts to pin) ----------------------------
 
 CLASSIFY_PROFILE_SYSTEM = """You decide which facts about a user's project are PROFILE-level.
 
@@ -189,23 +198,23 @@ You will receive a JSON array of fact strings. Output ONLY a JSON array containi
 def classify_profile(facts: list[str]) -> list[str]:
     """Return the subset of `facts` that are foundational/profile-level.
 
-    Only called when there are facts to classify (most turns: none), so it adds
-    no cost to ordinary turns. Output is intersected with the input so the model
-    cannot invent facts.
+    Only called when there are facts (most turns: none). Output is intersected
+    with the input so the model cannot invent facts.
     """
     if not facts:
         return []
     import json
 
-    resp = get_client().messages.create(
+    messages = [
+        {"role": "system", "content": CLASSIFY_PROFILE_SYSTEM},
+        {"role": "user", "content": json.dumps(facts)},
+    ]
+    text = _ollama_chat(
+        messages,
         model=config.EXTRACTION_MODEL,
-        max_tokens=512,
         temperature=0,
-        system=CLASSIFY_PROFILE_SYSTEM,
-        messages=[{"role": "user", "content": json.dumps(facts)}],
-    )
-    text = "".join(
-        block.text for block in resp.content if getattr(block, "type", None) == "text"
+        num_predict=512,
+        fmt="json",
     )
     picked = _parse_fact_list(text)
     allowed = set(facts)
