@@ -36,4 +36,30 @@ class MemoriaClient:
         self._client = httpx.Client(
             base_url=self.base_url,
             timeout=timeout,
-            transport=transport,    
+            transport=transport,
+        )    
+
+    # --- internals -----------------------------------------------------------
+    def _headers(self, auth: bool = True) -> dict:
+        if not auth:
+            return {}
+        if not self.api_key:
+            raise RuntimeError(
+                "MEMORIA_API_KEY is not set. Put it in .env or pass api_key=."
+            )
+        return {"X-API-Key": self.api_key}
+ 
+    # --- core runtime calls --------------------------------------------------
+    def search(self, session_id: str, query: str, top_k: int | None = None) -> list[dict]:
+        """Retrieve ranked memories. memoria searches across ALL the user's
+        memories (cross-session) with a boost for `session_id`."""
+        resp = self._client.post(
+            "/search",
+            headers=self._headers(),
+            json={"session_id": session_id, "query": query},
+        )
+        resp.raise_for_status()
+        rows = (resp.json() or {}).get("results") or []
+        memories = [_normalize_memory(r) for r in rows]
+        k = top_k if top_k is not None else config.SEARCH_TOP_K
+        return memories[:k]  # already ranked by memoria; just cap        
