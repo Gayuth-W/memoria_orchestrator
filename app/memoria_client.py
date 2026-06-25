@@ -82,3 +82,24 @@ class MemoriaClient:
             return True
         # memoria returns 500 on duplicate (unique constraint). Treat as exists.
         return False          
+
+    def list_sessions(self) -> list[dict]:
+        resp = self._client.get("/sessions", headers=self._headers())
+        resp.raise_for_status()
+        return resp.json() or []
+ 
+    def create_session(self, title: str) -> str:
+        """Create a session and return its id (resolved via list, since
+        POST /sessions returns no body)."""
+        resp = self._client.post(
+            "/sessions", headers=self._headers(), json={"title": title}
+        )
+        resp.raise_for_status()  # 201
+        matching = [s for s in self.list_sessions() if s.get("title") == title]
+        if not matching:
+            raise RuntimeError(f"created session '{title}' but couldn't find it")
+        matching.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+        return matching[0]["id"]
+ 
+    def close(self) -> None:
+        self._client.close()        
