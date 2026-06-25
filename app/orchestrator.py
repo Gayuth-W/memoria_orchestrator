@@ -44,11 +44,12 @@ class Orchestrator:
         history: list[dict] | None = None,
         save: bool = True,
         profile_id: str = "default",
+        api_key: str | None = None,
     ) -> dict:
         history = history or []
 
         # 1. retrieve (cross-session, ranked) + 2. pinned (always)
-        memories = self.memoria.search(session_id, message)
+        memories = self.memoria.search(session_id, message, api_key=api_key)
         retrieved = [m["text"] for m in memories if m.get("text")]
         pinned = self.profile.get(profile_id)
 
@@ -65,7 +66,7 @@ class Orchestrator:
             facts = llm.extract_facts(message, reply)
             for fact in facts:
                 try:
-                    self.memoria.create_memory(session_id, fact)
+                    self.memoria.create_memory(session_id, fact, api_key=api_key)
                     facts_saved.append(fact)
                 except Exception:  # noqa: BLE001 - a save error must not break the reply
                     pass
