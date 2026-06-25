@@ -1,3 +1,13 @@
+from functools import lru_cache
+ 
+import anthropic
+ 
+from . import config
+
+
+
+
+
 SYSTEM_TEMPLATE = """You are an assistant helping a developer build a software project.
  
 Between the markers below are facts about this user and their project that were
@@ -21,3 +31,17 @@ def build_system_prompt(memory_context: str) -> str:
     if not context:
         context = "(no facts remembered yet)"
     return SYSTEM_TEMPLATE.format(context=context)
+     
+@lru_cache(maxsize=1)
+def get_client() -> anthropic.Anthropic:
+    """Construct (once) the Anthropic client.
+ 
+    Raises a clear error if the API key is missing. This is the only spot that
+    requires the key, so importing the package for tests stays key-free.
+    """
+    if not config.ANTHROPIC_API_KEY:
+        raise RuntimeError(
+            "ANTHROPIC_API_KEY is not set. Put it in a local .env file "
+            "(see .env.example) or export it before running."
+        )
+    return anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
