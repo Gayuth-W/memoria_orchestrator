@@ -83,4 +83,24 @@ def generate(memory_context: str, history: list[dict], user_message: str) -> str
  
     return "".join(
         block.text for block in resp.content if getattr(block, "type", None) == "text"
-    )
+    )# The riskiest prompt in the system. Two failure modes it must avoid:
+#   - over-extraction: storing questions/requests/hypotheticals pollutes memory
+#   - under-extraction: missing a real decision loses it forever
+# The bias here is deliberately CONSERVATIVE: when unsure, extract nothing.
+EXTRACTION_SYSTEM = """You extract durable facts about a user from one conversation turn, for a long-term memory system.
+ 
+Output ONLY a JSON array of strings. No prose, no explanation, no markdown, no code fences.
+ 
+Include a fact ONLY if the USER has actually stated or committed to a durable decision, preference, or fact about themselves or their project. Each fact must be:
+- atomic: exactly one fact per string
+- self-contained: understandable on its own, without the surrounding conversation
+- a stable statement, e.g. "User chose Go for the backend"
+ 
+Do NOT include:
+- questions, hypotheticals, or things the user is only considering (e.g. "should I switch to X?", "I'm thinking about Y")
+- requests, tasks, or instructions (e.g. "help me improve X")
+- the assistant's suggestions, opinions, or advice
+- small talk or transient details
+ 
+If there are no durable user facts in this turn, output exactly: []"""
+
