@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>memoria — what the model is told</title>
+<style>
+  :root{
+    --ink:#1b1c2e; --muted:#6a6b82; --paper:#f6f6fb; --card:#ffffff;
+    --line:#e5e5ef; --line-strong:#d3d3e2;
+    /* provenance colors encode meaning */
+    --pin:#b06d0a; --pin-bg:#fdf4e6; --pin-line:#eccf9a;
+    --recall:#0c6f6e; --recall-bg:#e6f3f3; --recall-line:#a8d6d5;
+    --save:#5a3ad6; --save-bg:#efeafb; --save-line:#c8b9f2;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --r:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:var(--sans); color:var(--ink); background:var(--paper);
+    display:flex; flex-direction:column; height:100vh;
+  }
+  header{
+    padding:18px 24px; border-bottom:1px solid var(--line); background:var(--card);
+    display:flex; align-items:baseline; gap:16px; flex-wrap:wrap;
+  }
+  .wordmark{font-weight:680; font-size:20px; letter-spacing:-.02em}
+  .wordmark b{color:var(--recall)}
+  .tagline{color:var(--muted); font-size:13px; max-width:52ch; line-height:1.4}
+  .profile-pill{
+    margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--muted);
+    border:1px solid var(--line); border-radius:999px; padding:5px 12px; white-space:nowrap;
+  }
+  main{flex:1; display:flex; min-height:0}
+  /* sidebar */
+  aside{
+    width:300px; border-right:1px solid var(--line); background:var(--card);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  .rail-h{
+    font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--muted); padding:16px 18px 8px;
+  }
+  .sessions{overflow:auto; padding:0 12px 8px}
+  .session{
+    display:flex; align-items:center; gap:8px; width:100%; text-align:left;
+    border:1px solid transparent; background:none; color:var(--ink);
+    padding:9px 11px; border-radius:9px; cursor:pointer; font-size:14px; font-family:var(--sans);
+  }
+  .session:hover{background:var(--paper)}
+  .session.active{background:var(--paper); border-color:var(--line-strong); font-weight:600}
+  .session .dot{width:7px;height:7px;border-radius:50%;background:var(--line-strong);flex:none}
+  .session.active .dot{background:var(--recall)}
+  .newsession{display:flex; gap:6px; padding:8px 14px 12px}
+  .newsession input{
+    flex:1; border:1px solid var(--line); border-radius:8px; padding:8px 10px;
+    font:inherit; font-size:13px; min-width:0;
+  }
+  .newsession button, .send button{
+    border:1px solid var(--ink); background:var(--ink); color:var(--paper);
+    border-radius:8px; padding:8px 12px; font:inherit; font-size:13px; cursor:pointer;
+  }
+  .newsession button:hover, .send button:hover{opacity:.9}
+  .pinned{border-top:1px solid var(--line); overflow:auto; padding:0 14px 16px; flex:1}
+  .pin-fact{
+    font-size:13px; line-height:1.4; color:var(--pin); background:var(--pin-bg);
+    border:1px solid var(--pin-line); border-radius:8px; padding:8px 10px; margin-top:8px;
+  }
+  .empty{color:var(--muted); font-size:13px; line-height:1.5; padding:10px 2px}
+  /* chat */
+  .chat{flex:1; display:flex; flex-direction:column; min-height:0}
+  .log{flex:1; overflow:auto; padding:24px; display:flex; flex-direction:column; gap:18px}
+  .turn{display:flex; flex-direction:column; gap:8px; max-width:760px}
+  .bubble{padding:12px 15px; border-radius:14px; line-height:1.5; font-size:15px; white-space:pre-wrap}
+  .turn.user{align-self:flex-end; align-items:flex-end}
+  .turn.user .bubble{background:var(--ink); color:var(--paper); border-bottom-right-radius:5px}
+  .turn.bot .bubble{background:var(--card); border:1px solid var(--line); border-bottom-left-radius:5px}
+  .prov{display:flex; flex-wrap:wrap; gap:6px; margin-top:2px}
+  .chip{
+    font-family:var(--mono); font-size:11px; line-height:1.3; border-radius:7px;
+    padding:4px 8px; border:1px solid; display:inline-flex; gap:6px; align-items:center;
+  }
+  .chip .k{opacity:.7; text-transform:uppercase; letter-spacing:.04em; font-size:10px}
+  .chip.pin{color:var(--pin); background:var(--pin-bg); border-color:var(--pin-line)}
+  .chip.recall{color:var(--recall); background:var(--recall-bg); border-color:var(--recall-line)}
+  .chip.save{color:var(--save); background:var(--save-bg); border-color:var(--save-line)}
+  .chip.newpin{color:var(--pin); background:transparent; border-color:var(--pin); border-style:dashed}
+  .none-injected{font-family:var(--mono); font-size:11px; color:var(--muted)}
+  .composer{border-top:1px solid var(--line); background:var(--card); padding:14px 24px}
+  .send{display:flex; gap:10px; max-width:760px}
+  .send textarea{
+    flex:1; resize:none; border:1px solid var(--line-strong); border-radius:10px;
+    padding:11px 13px; font:inherit; font-size:15px; line-height:1.4; min-height:46px; max-height:160px;
+  }
+  .send textarea:focus, .newsession input:focus{outline:2px solid var(--recall); outline-offset:1px}
+  .err{color:#a4231f; background:#fdeceb; border:1px solid #f3c7c4; border-radius:8px;
+       padding:8px 12px; font-size:13px; margin-top:8px; max-width:760px}
+  .hint{color:var(--muted); font-size:12px; margin-top:8px; font-family:var(--mono)}
+  @keyframes rise{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
+  .turn.bot .bubble, .prov{animation:rise .22s ease both}
+  @media (prefers-reduced-motion:reduce){ *{animation:none !important} }
+  @media (max-width:760px){
+    main{flex-direction:column} aside{width:auto; max-height:42vh}
+    .pinned{flex:none}
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="wordmark">memor<b>i</b>a</span>
+  <span class="tagline">The model has no memory of its own. This panel shows exactly what it’s told — and what it saves — on every message.</span>
+  <span class="profile-pill" id="pill">profile: default</span>
+</header>
+
+<main>
+  <aside>
+    <div class="rail-h">Sessions</div>
+    <div class="sessions" id="sessions"></div>
+    <div class="newsession">
+      <input id="newTitle" placeholder="New session (e.g. Week 1)" />
+      <button id="newBtn">Add</button>
+    </div>
+    <div class="rail-h">Always remembered</div>
+    <div class="pinned" id="pinned"></div>
+  </aside>
+
+  <section class="chat">
+    <div class="log" id="log"></div>
+    <div class="composer">
+      <div class="send">
+        <textarea id="msg" placeholder="Say something — try “I’m using Go for the backend and React for the frontend”"></textarea>
+        <button id="sendBtn">Send</button>
+      </div>
+      <div class="hint" id="hint">Pick or add a session to begin.</div>
+    </div>
+  </section>
+</main>
+
+<script>
+const PROFILE = "default";
+let sessions = [];
+let activeId = null;
+const histories = {}; // session_id -> [{role,content}]
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+async function api(path, opts){
+  const res = await fetch(path, opts);
+  if(!res.ok){ throw new Error((await res.text()) || res.status); }
+  return res.json();
+}
+
+async function loadSessions(){
+  try{
+    const data = await api("/sessions");
+    sessions = data.sessions || [];
+    renderSessions();
+  }catch(e){ /* memoria may be down; surfaced on send */ }
+}
+
+function renderSessions(){
+  const el = $("sessions");
+  if(!sessions.length){ el.innerHTML = '<div class="empty">No sessions yet. Add one to start a conversation.</div>'; return; }
+  el.innerHTML = "";
+  sessions.forEach(s => {
+    const b = document.createElement("button");
+    b.className = "session" + (s.id === activeId ? " active" : "");
+    b.innerHTML = '<span class="dot"></span>' + esc(s.title || s.id);
+    b.onclick = () => selectSession(s.id);
+    el.appendChild(b);
+  });
+}
+
+function selectSession(id){
+  activeId = id;
+  histories[id] = histories[id] || [];
+  renderSessions();
+  renderLog();
+  $("hint").textContent = "Session active. Each reply shows what memory was used.";
+  $("msg").focus();
+}
+
+async function addSession(){
+  const title = $("newTitle").value.trim();
+  if(!title) return;
+  try{
+    const data = await api("/sessions", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({title})});
+    $("newTitle").value = "";
+    await loadSessions();
+    selectSession(data.id);
+  }catch(e){ showErr("Couldn’t add the session. Is memoria running? — " + e.message); }
+}
+
+async function loadProfile(){
+  try{
+    const data = await api("/profile?profile_id=" + encodeURIComponent(PROFILE));
+    const el = $("pinned");
+    const facts = data.pinned || [];
+    if(!facts.length){
+      el.innerHTML = '<div class="empty">Nothing pinned yet. State a decision like “I’m using Go for the backend” and watch it get pinned here — it’s then sent to the model on every later message.</div>';
+    }else{
+      el.innerHTML = facts.map(f => '<div class="pin-fact">'+esc(f)+'</div>').join("");
+    }
+  }catch(e){ /* ignore */ }
+}
+
+function renderLog(){
+  const log = $("log");
+  log.innerHTML = "";
+  const h = histories[activeId] || [];
+  if(!h.length){
+    log.innerHTML = '<div class="empty">Pick a session and say something. Everything the model is given, and everything it saves, shows up under each reply.</div>';
+    return;
+  }
+  h.forEach(turn => log.appendChild(renderTurn(turn)));
+  log.scrollTop = log.scrollHeight;
+}
+
+function renderTurn(turn){
+  const div = document.createElement("div");
+  div.className = "turn " + (turn.role === "user" ? "user" : "bot");
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.textContent = turn.content;
+  div.appendChild(bubble);
+  if(turn.role === "assistant" && turn.prov){
+    div.appendChild(renderProvenance(turn.prov));
+  }
+  return div;
+}
+
+function chip(kind, label, text){
+  return '<span class="chip '+kind+'"><span class="k">'+label+'</span>'+esc(text)+'</span>';
+}
+
+function renderProvenance(p){
+  const wrap = document.createElement("div");
+  wrap.className = "prov";
+  const pinnedSet = new Set(p.pinned_used || []);
+  const recalledOnly = (p.memories_used || []).filter(t => !pinnedSet.has(t));
+  let html = "";
+  (p.pinned_used || []).forEach(t => html += chip("pin","always", t));
+  recalledOnly.forEach(t => html += chip("recall","recalled", t));
+  (p.facts_saved || []).forEach(t => html += chip("save","saved", t));
+  (p.facts_pinned || []).forEach(t => html += chip("newpin","pinned now", t));
+  if(!html){ html = '<span class="none-injected">no memory injected or saved this turn</span>'; }
+  wrap.innerHTML = html;
+  return wrap;
+}
+
+function showErr(text){
+  const log = $("log");
+  const d = document.createElement("div");
+  d.className = "err";
+  d.textContent = text;
+  log.appendChild(d);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function send(){
+  const text = $("msg").value.trim();
+  if(!text) return;
+  if(!activeId){ showErr("Pick or add a session first."); return; }
+  const h = histories[activeId];
+  const priorHistory = h.map(t => ({role:t.role, content:t.content}));
+  h.push({role:"user", content:text});
+  $("msg").value = "";
+  renderLog();
+
+  $("sendBtn").disabled = true;
+  try{
+    const data = await api("/chat", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ session_id:activeId, message:text, profile_id:PROFILE, history:priorHistory })
+    });
+    h.push({role:"assistant", content:data.reply, prov:{
+      memories_used:data.memories_used, pinned_used:data.pinned_used,
+      facts_saved:data.facts_saved, facts_pinned:data.facts_pinned
+    }});
+    renderLog();
+    loadProfile(); // pinned set may have grown this turn
+  }catch(e){
+    showErr("The model call failed: " + e.message);
+  }finally{
+    $("sendBtn").disabled = false;
+  }
+}
+
+$("newBtn").onclick = addSession;
+$("sendBtn").onclick = send;
+$("newTitle").addEventListener("keydown", e => { if(e.key === "Enter") addSession(); });
+$("msg").addEventListener("keydown", e => {
+  if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(); }
+});
+
+loadSessions();
+loadProfile();
+</script>
+</body>
+</html>
