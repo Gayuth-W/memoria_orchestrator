@@ -141,3 +141,27 @@ def _parse_fact_list(text: str) -> list[str]:
     if not isinstance(data, list):
         return []
     return [s.strip() for s in data if isinstance(s, str) and s.strip()]
+
+def extract_facts(message: str, reply: str = "") -> list[str]:
+    """Extract durable user facts from a turn. Returns [] when there are none.
+ 
+    temperature=0 because extraction should be deterministic, not creative.
+    The assistant reply is passed for context only (e.g. to resolve "yes, do
+    that"); the prompt forbids extracting facts from the assistant's words.
+    """
+    user_content = (
+        f"User message:\n{message}\n\n"
+        f"Assistant reply (context only — do NOT extract facts from the "
+        f"assistant's suggestions):\n{reply}"
+    )
+    resp = get_client().messages.create(
+        model=config.EXTRACTION_MODEL,
+        max_tokens=512,
+        temperature=0,
+        system=EXTRACTION_SYSTEM,
+        messages=[{"role": "user", "content": user_content}],
+    )
+    text = "".join(
+        block.text for block in resp.content if getattr(block, "type", None) == "text"
+    )
+    return _parse_fact_list(text)    
