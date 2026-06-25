@@ -63,3 +63,15 @@ class MemoriaClient:
         memories = [_normalize_memory(r) for r in rows]
         k = top_k if top_k is not None else config.SEARCH_TOP_K
         return memories[:k]  # already ranked by memoria; just cap        
+
+    def create_memory(self, session_id: str, text: str) -> None:
+          """Store one memory. Embedding is indexed asynchronously by memoria's
+          worker, so it may take a moment before it is vector-searchable."""
+          resp = self._client.post(
+              "/memories",
+              headers=self._headers(),
+              json={"session_id": session_id, "text": text},
+          )
+          resp.raise_for_status()  # expects 201        
+
+          
