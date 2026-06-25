@@ -1,34 +1,28 @@
-"""Offline wiring check for generate() — no API key, no network.
+"""Offline wiring check for generate() — no Ollama, no network.
 
-Mocks the Anthropic client to prove the *plumbing* is correct:
+Mocks the single LLM seam (_ollama_chat) to prove the plumbing:
   - the configured model is used
-  - the injected memory_context lands in the system prompt
-  - messages == history + the new user turn (in order)
-  - text blocks in the response are concatenated into the returned string
+  - the injected memory_context lands in the system message
+  - messages == [system] + history + new user turn (in order)
+  - the seam's text is returned verbatim
 
-This does NOT prove Claude gives a good answer — that's the live test's job.
-It only proves we call the SDK correctly and parse its response correctly.
-
-Run:  python tests/test_generate_wiring.py
+Run:  PYTHONPATH=. python test/test_generate_wiring.py
 """
 
 import sys
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from app import config, llm
 
 
-def fake_message(text: str):
-    """Mimic the shape generate() reads: resp.content -> [block with .type/.text]."""
-    return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)])
-
-
 def main() -> int:
-    fake_client = MagicMock()
-    fake_client.messages.create.return_value = fake_message(
-        "Since you're on Go, consider clean architecture..."
-    )
+    captured = {}
+
+    def fake_chat(messages, *, model, temperature=0.7, num_predict=None, fmt=None):
+        captured["messages"] = messages
+        captured["model"] = model
+        captured["fmt"] = fmt
+        return "Since you're on Go, consider clean architecture..."
 
     memory_context = "User chose Go for the backend.\nUser chose React for the frontend."
     history = [
@@ -37,26 +31,19 @@ def main() -> int:
     ]
     user_message = "I want to improve my backend architecture."
 
-    # Patch the client factory so no key / network is needed.
-    with patch.object(llm, "get_client", return_value=fake_client):
+    with patch.object(llm, "_ollama_chat", side_effect=fake_chat):
         result = llm.generate(memory_context, history, user_message)
 
-    # What was actually sent to the SDK?
-    _, kwargs = fake_client.messages.create.call_args
-
+    msgs = captured["messages"]
     checks = []
-
-    checks.append(("model is configured model", kwargs["model"] == config.CLAUDE_MODEL))
-    checks.append(("memory_context is in system prompt",
-                   "User chose Go for the backend." in kwargs["system"]))
-    checks.append(("system instructs to use memory",
-                   "KNOWN FACTS" in kwargs["system"]))
-    checks.append(("history preserved + new turn appended (order)",
-                   kwargs["messages"] == history + [
-                       {"role": "user", "content": user_message}]))
-    checks.append(("max_tokens / temperature passed",
-                   "max_tokens" in kwargs and "temperature" in kwargs))
-    checks.append(("response text parsed from content blocks",
+    checks.append(("uses configured model", captured["model"] == config.OLLAMA_MODEL))
+    checks.append(("first message is system role", msgs[0]["role"] == "system"))
+    checks.append(("memory_context in system message",
+                   "User chose Go for the backend." in msgs[0]["content"]))
+    checks.append(("history preserved + new user turn appended (order)",
+                   msgs[1:] == history + [{"role": "user", "content": user_message}]))
+    checks.append(("generation uses no json format", captured["fmt"] is None))
+    checks.append(("seam text returned",
                    result == "Since you're on Go, consider clean architecture..."))
 
     print("Wiring checks:")
@@ -64,7 +51,6 @@ def main() -> int:
     for name, passed in checks:
         print(f"  [{'PASS' if passed else 'FAIL'}] {name}")
         ok = ok and passed
-
     print()
     print("WIRING OK" if ok else "WIRING BROKEN")
     return 0 if ok else 1
