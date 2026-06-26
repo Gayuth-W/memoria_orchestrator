@@ -221,5 +221,19 @@ def classify_profile(facts: list[str]) -> list[str]:
         fmt="json",
     )
     picked = _parse_fact_list(text)
-    allowed = set(facts)
-    return [f for f in picked if f in allowed]
+    
+    # The LLM sometimes adds punctuation or slightly changes case. 
+    # Match back to the original fact defensively.
+    import re
+    def _normalize(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    allowed_map = {_normalize(f): f for f in facts}
+    
+    validated = []
+    for f in picked:
+        norm = _normalize(f)
+        if norm in allowed_map:
+            validated.append(allowed_map[norm])
+            
+    return validated
