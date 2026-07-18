@@ -4,30 +4,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="/image.png">
   <title>memoria — what the model is told</title>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --ink: #f8fafc;
-      --muted: #94a3b8;
-      --paper: #0f172a;
-      --card: rgba(30, 41, 59, 0.7);
-      --line: rgba(255, 255, 255, 0.1);
-      --line-strong: rgba(255, 255, 255, 0.25);
+      --ink: #0f172a;
+      --muted: #64748b;
+      --paper: #f8fafc;
+      --card: rgba(255, 255, 255, 0.7);
+      --line: rgba(0, 0, 0, 0.1);
+      --line-strong: rgba(0, 0, 0, 0.25);
       /* provenance colors encode meaning */
-      --pin: #fbbf24;
-      --pin-bg: rgba(251, 191, 36, 0.1);
-      --pin-line: rgba(251, 191, 36, 0.3);
-      --recall: #3b82f6;
+      --pin: #d97706;
+      --pin-bg: rgba(245, 158, 11, 0.15);
+      --pin-line: rgba(245, 158, 11, 0.4);
+      --recall: #2563eb;
       --recall-bg: rgba(59, 130, 246, 0.15);
-      --recall-line: rgba(59, 130, 246, 0.3);
-      --save: #8b5cf6;
+      --recall-line: rgba(59, 130, 246, 0.4);
+      --save: #7c3aed;
       --save-bg: rgba(139, 92, 246, 0.15);
-      --save-line: rgba(139, 92, 246, 0.3);
+      --save-line: rgba(139, 92, 246, 0.4);
       --sans: 'Outfit', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       --r: 12px;
-      
+
       --primary: #3b82f6;
       --primary-hover: #2563eb;
       --primary-glow: rgba(59, 130, 246, 0.5);
@@ -48,9 +49,9 @@
       font-family: var(--sans);
       color: var(--ink);
       background-color: var(--paper);
-      background: radial-gradient(circle at top left, var(--paper), #020617),
-                  radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.15), transparent 40%),
-                  radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.15), transparent 40%);
+      background: radial-gradient(circle at top left, #ffffff, #f1f5f9),
+        radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.15), transparent 40%),
+        radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.15), transparent 40%);
       background-attachment: fixed;
       display: flex;
       flex-direction: column;
@@ -61,6 +62,8 @@
       padding: 18px 24px;
       border-bottom: 1px solid var(--line);
       background: var(--card);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       display: flex;
       align-items: baseline;
       gap: 16px;
@@ -106,6 +109,8 @@
       width: 300px;
       border-right: 1px solid var(--line);
       background: var(--card);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       display: flex;
       flex-direction: column;
       min-height: 0;
@@ -142,7 +147,7 @@
     }
 
     .session:hover {
-      background: var(--paper)
+      background: var(--line)
     }
 
     .session.active {
@@ -177,6 +182,8 @@
       font: inherit;
       font-size: 13px;
       min-width: 0;
+      background: transparent;
+      color: var(--ink);
     }
 
     .newsession button,
@@ -266,6 +273,8 @@
 
     .turn.bot .bubble {
       background: var(--card);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       border: 1px solid var(--line);
       border-bottom-left-radius: 5px
     }
@@ -330,6 +339,8 @@
     .composer {
       border-top: 1px solid var(--line);
       background: var(--card);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       padding: 14px 24px
     }
 
@@ -342,7 +353,9 @@
     .send textarea {
       flex: 1;
       resize: none;
+      background: rgba(255, 255, 255, 0.6);
       border: 1px solid var(--line-strong);
+      color: var(--ink);
       border-radius: 10px;
       padding: 11px 13px;
       font: inherit;
@@ -360,7 +373,7 @@
     }
 
     .api-key-input {
-      background: rgba(15, 23, 42, 0.6);
+      background: rgba(255, 255, 255, 0.6);
       border: 1px solid var(--line);
       color: var(--ink);
       padding: 6px 12px;
@@ -486,13 +499,13 @@
 
     async function api(path, opts = {}) {
       const baseURL = window.location.protocol === "file:" ? "http://127.0.0.1:8090" : "";
-      
+
       opts.headers = opts.headers || {};
       const key = apiKeyInput.value.trim();
       if (key) {
         opts.headers["X-API-Key"] = key;
       }
-      
+
       const res = await fetch(baseURL + path, opts);
       if (!res.ok) { throw new Error((await res.text()) || res.status); }
       return res.json();
@@ -557,7 +570,7 @@
       } catch (e) { /* ignore */ }
     }
 
-    window.unpinFact = async function(fact) {
+    window.unpinFact = async function (fact) {
       try {
         await api("/unpin", {
           method: "POST",

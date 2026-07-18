@@ -28,7 +28,7 @@ class MemoriaClient:
         self,
         base_url: str | None = None,
         api_key: str | None = None,
-        timeout: float = 15.0,
+        timeout: float = 60.0,
         transport: httpx.BaseTransport | None = None,  # for tests
     ):
         self.base_url = (base_url or config.MEMORIA_BASE_URL).rstrip("/")
@@ -102,5 +102,27 @@ class MemoriaClient:
         matching.sort(key=lambda s: s.get("created_at", ""), reverse=True)
         return matching[0]["id"]
  
+    def get_profile(self, api_key: str | None = None) -> list[str]:
+        resp = self._client.get("/profile", headers=self._headers(api_key=api_key))
+        resp.raise_for_status()
+        return resp.json() or []
+
+    def add_profile_fact(self, fact: str, api_key: str | None = None) -> None:
+        resp = self._client.post(
+            "/profile", headers=self._headers(api_key=api_key), json={"fact": fact}
+        )
+        resp.raise_for_status()
+
+    def remove_profile_fact(self, fact: str, api_key: str | None = None) -> None:
+        # Pass the fact in the body of DELETE request.
+        request = httpx.Request(
+            "DELETE",
+            self.base_url + "/profile",
+            headers=self._headers(api_key=api_key),
+            json={"fact": fact}
+        )
+        resp = self._client.send(request)
+        resp.raise_for_status()
+
     def close(self) -> None:
         self._client.close()        

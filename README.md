@@ -1,4 +1,4 @@
-# Orchestrator — memoria + Claude
+# MemoriaOrchestrator
 
 Separate Python service that drives the memoria scenario end to end. memoria
 stays a clean memory-infrastructure API; this service does the Claude calls and
