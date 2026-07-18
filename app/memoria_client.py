@@ -107,5 +107,11 @@ class MemoriaClient:
         resp.raise_for_status()
         return resp.json() or []
 
+    def add_profile_fact(self, fact: str, api_key: str | None = None) -> None:
+        resp = self._client.post(
+            "/profile", headers=self._headers(api_key=api_key), json={"fact": fact}
+        )
+        resp.raise_for_status()
+
     def close(self) -> None:
         self._client.close()        
