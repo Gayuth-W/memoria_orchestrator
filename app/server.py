@@ -54,8 +54,6 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
     history: list[Message] = []
-    profile_id: str = "default"
-
 
 class ChatResponse(BaseModel):
     reply: str
@@ -72,8 +70,6 @@ class SeedRequest(BaseModel):
 
 class PinRequest(BaseModel):
     fact: str
-    profile_id: str = "default"
-
 
 class SessionRequest(BaseModel):
     title: str
@@ -98,7 +94,7 @@ def health():
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, x_api_key: str | None = Header(None, alias="X-API-Key")):
     history = [m.model_dump() for m in req.history]
-    result = _orch.chat(req.session_id, req.message, history, profile_id=req.profile_id, api_key=x_api_key)
+    result = _orch.chat(req.session_id, req.message, history, api_key=x_api_key)
     return ChatResponse(**result)
 
 
@@ -111,20 +107,25 @@ def seed(req: SeedRequest, x_api_key: str | None = Header(None, alias="X-API-Key
 
 # --- profile / pinned facts --------------------------------------------------
 @app.get("/profile")
-def get_profile(profile_id: str = "default"):
-    return {"profile_id": profile_id, "pinned": _orch.profile.get(profile_id)}
+def get_profile(x_api_key: str | None = Header(None, alias="X-API-Key")):
+    pinned = []
+    try:
+        pinned = _memoria.get_profile(api_key=x_api_key)
+    except Exception:
+        pass
+    return {"pinned": pinned}
 
 
 @app.post("/pin")
-def pin(req: PinRequest):
-    pinned = _orch.profile.add(req.profile_id, req.fact)
-    return {"profile_id": req.profile_id, "pinned": pinned}
+def pin(req: PinRequest, x_api_key: str | None = Header(None, alias="X-API-Key")):
+    _memoria.add_profile_fact(req.fact, api_key=x_api_key)
+    return {"pinned": _memoria.get_profile(api_key=x_api_key)}
 
 
 @app.post("/unpin")
-def unpin(req: PinRequest):
-    pinned = _orch.profile.remove(req.profile_id, req.fact)
-    return {"profile_id": req.profile_id, "pinned": pinned}
+def unpin(req: PinRequest, x_api_key: str | None = Header(None, alias="X-API-Key")):
+    _memoria.remove_profile_fact(req.fact, api_key=x_api_key)
+    return {"pinned": _memoria.get_profile(api_key=x_api_key)}
 
 
 # --- session proxies (demo convenience) -------------------------------------
