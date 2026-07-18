@@ -113,5 +113,16 @@ class MemoriaClient:
         )
         resp.raise_for_status()
 
+    def remove_profile_fact(self, fact: str, api_key: str | None = None) -> None:
+        # Pass the fact in the body of DELETE request.
+        request = httpx.Request(
+            "DELETE",
+            self.base_url + "/profile",
+            headers=self._headers(api_key=api_key),
+            json={"fact": fact}
+        )
+        resp = self._client.send(request)
+        resp.raise_for_status()
+
     def close(self) -> None:
         self._client.close()        
