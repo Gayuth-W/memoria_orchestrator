@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from . import config, llm
 from .memoria_client import MemoriaClient
-from .profile import ProfileStore
 
 
 def merge_context(pinned: list[str], retrieved: list[str]) -> str:
@@ -33,9 +32,8 @@ def merge_context(pinned: list[str], retrieved: list[str]) -> str:
 
 
 class Orchestrator:
-    def __init__(self, memoria: MemoriaClient, profile: ProfileStore | None = None):
+    def __init__(self, memoria: MemoriaClient):
         self.memoria = memoria
-        self.profile = profile or ProfileStore(config.PROFILE_STORE_PATH)
 
     def chat(
         self,
@@ -43,7 +41,6 @@ class Orchestrator:
         message: str,
         history: list[dict] | None = None,
         save: bool = True,
-        profile_id: str = "default",
         api_key: str | None = None,
     ) -> dict:
         history = history or []
@@ -51,7 +48,12 @@ class Orchestrator:
         # 1. retrieve (cross-session, ranked) + 2. pinned (always)
         memories = self.memoria.search(session_id, message, api_key=api_key)
         retrieved = [m["text"] for m in memories if m.get("text")]
-        pinned = self.profile.get(profile_id)
+        
+        pinned = []
+        try:
+            pinned = self.memoria.get_profile(api_key=api_key)
+        except Exception:
+            pass
 
         # 3. inject (pinned first, deduped against retrieved)
         context = merge_context(pinned, retrieved)
@@ -74,10 +76,10 @@ class Orchestrator:
             if facts:
                 try:
                     for pf in llm.classify_profile(facts):
-                        self.profile.add(profile_id, pf)
+                        self.memoria.add_profile_fact(pf, api_key=api_key)
                         facts_pinned.append(pf)
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception as e:
+                    print("PIN ERROR:", e)
 
         return {
             "reply": reply,
